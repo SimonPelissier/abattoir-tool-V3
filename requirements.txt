@@ -1,0 +1,10 @@
+streamlit>=1.30
+pandas
+requests
+google-genai
+beautifulsoup4
+PyMuPDF
+pytesseract
+pillow
+geopy
+openpyxl

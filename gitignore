@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Environment
+.env
+.env.local
+.venv/
+venv/
+
+# Cache (local runs)
+.osfl_slaughterhouse_cache/
+osfl_slaughterhouse_cache/
+
+# Output files (avoid committing CSV exports)
+slaughterhouses_*.csv
+*.xlsx
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
