@@ -256,6 +256,7 @@ with c1:
                     gl=st.session_state.gl,
                     hl=st.session_state.hl,
                     location=st.session_state.location or st.session_state.country,
+                    results_per_query=4,
                 )
 
 with c2:
