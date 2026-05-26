@@ -224,7 +224,7 @@ def serpapi_search(
     gl: str = "us",
     hl: str = "en",
     location: str = "United States",
-    results_per_query: int = 3,
+    results_per_query: int = 4,
 ) -> list[dict]:
     """Run SerpAPI on each query. Deduplicates URLs and excludes social media."""
     all_results: list[dict] = []
@@ -972,7 +972,7 @@ def build_export_dataframe(final_abattoirs: list[dict], company: str):
             "Company": a.get("operator") or company,
             "Facility_name": a.get("facility_name", ""),
             "Est.#": a.get("establishment_number", ""),
-            "Address": a.get("address", ""),
+            "Address": a.get("google_address"),
             "City": a.get("city", ""),
             "Country": a.get("country", ""),
             "Latitude": a.get("latitude", ""),
