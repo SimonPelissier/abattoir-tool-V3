@@ -174,6 +174,16 @@ st.caption(
     "data for any meatpacking group, with cross-source synthesis and geocoding."
 )
 
+if st.session_state.configured:
+    _cc1, _cc2 = st.columns([1, 4])
+    with _cc1:
+        if st.button("🗑️ Clear cache", use_container_width=True):
+            n = pipeline.cache_clear()
+            st.success(f"Cache cleared ({n} files deleted).")
+    with _cc2:
+        _stats = pipeline.cache_stats()
+        st.caption(f"Cache: {_stats['files']} files · {_stats['size_mb']} MB")
+
 if not st.session_state.configured:
     st.info(
         "👈 Configure your API keys in the sidebar to get started. "
