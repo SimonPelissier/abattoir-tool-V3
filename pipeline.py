@@ -1045,6 +1045,8 @@ def build_export_dataframe(final_abattoirs: list[dict], company: str):
             "Export_certified": a.get("export_certified", ""),
             "Classification_uncertain": a.get("classification_uncertain", ""),
             "Confidence": a.get("confidence_score", ""),
+            "Duplicate_address_flag": a.get("duplicate_address_flag", False),
+            "Duplicate_with": " | ".join(a.get("duplicate_with", [])),
             "N_sources": a.get("n_sources", len(a.get("source_urls", []))),
             "Source_URLs": " | ".join(a.get("source_urls", [])),
         }
