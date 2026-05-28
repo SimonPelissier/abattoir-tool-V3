@@ -626,6 +626,7 @@ else:
             )
             pipeline.geocode_google_first(a, default_company=st.session_state.company)
         progress.progress(1.0, text="Done.")
+        pipeline.flag_duplicate_addresses(source_data)
         st.rerun()
 
     # Stats
@@ -636,6 +637,32 @@ else:
     cols = st.columns(max(len(by_source), 1))
     for col, (src, n) in zip(cols, sorted(by_source.items())):
         col.metric(src, n)
+
+    flagged = [a for a in source_data if a.get("duplicate_address_flag")]
+    if flagged:
+        st.warning(
+            f"⚠️ {len(flagged)} facility(ies) resolve to the same address as another "
+            "facility — these may be duplicate records under different names from "
+            "different sources. Review before finalising."
+        )
+        groups: dict = {}
+        for a in flagged:
+            gid = a.get("duplicate_address_group")
+            groups.setdefault(gid, []).append(a)
+        for gid, members in sorted(groups.items()):
+            with st.expander(
+                f"Possible duplicate group #{gid + 1} — "
+                f"{', '.join(m.get('facility_name', '?') for m in members)}",
+                expanded=False,
+            ):
+                for m in members:
+                    st.markdown(
+                        f"- **{m.get('facility_name', '?')}** "
+                        f"({m.get('city', '?')}, {m.get('country', '?')})  \n"
+                        f"  address: {m.get('google_address') or m.get('address', '—')}  \n"
+                        f"  coords: {m.get('latitude'):.5f}, {m.get('longitude'):.5f}  \n"
+                        f"  sources: {' | '.join(m.get('source_urls', []))[:120]}"
+                    )
 
     # Map
     geocoded = [a for a in source_data if a.get("latitude") and a.get("longitude")]
