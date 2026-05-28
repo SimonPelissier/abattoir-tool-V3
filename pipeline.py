@@ -821,6 +821,61 @@ def geocode_google_first(facility: dict, default_company: str = "") -> None:
     facility["geocoding_quality"] = "failed"
     facility["coords_source"] = None
 
+def flag_duplicate_addresses(facilities: list[dict], coord_tolerance_m: int = 100) -> int:
+    from geopy.distance import geodesic
+
+    # Reset previous flags
+    for f in facilities:
+        f["duplicate_address_flag"] = False
+        f["duplicate_address_group"] = None
+        f["duplicate_with"] = []
+
+    # Only consider geocoded facilities
+    geo = [f for f in facilities if f.get("latitude") and f.get("longitude")]
+
+    # Group by proximity / shared address
+    groups: list[list[dict]] = []
+
+    def _norm_addr(f: dict) -> str:
+        return _normalize(f.get("google_address") or f.get("address") or "")
+
+    for f in geo:
+        placed = False
+        f_addr = _norm_addr(f)
+        for group in groups:
+            for g in group:
+                same_addr = bool(f_addr) and f_addr == _norm_addr(g)
+                try:
+                    dist = geodesic(
+                        (f["latitude"], f["longitude"]),
+                        (g["latitude"], g["longitude"]),
+                    ).meters
+                except Exception:
+                    dist = float("inf")
+                if same_addr or dist <= coord_tolerance_m:
+                    group.append(f)
+                    placed = True
+                    break
+            if placed:
+                break
+        if not placed:
+            groups.append([f])
+
+    # Flag groups with more than one member
+    n_flagged = 0
+    group_id = 0
+    for group in groups:
+        if len(group) > 1:
+            names = [g.get("facility_name", "?") for g in group]
+            for g in group:
+                g["duplicate_address_flag"] = True
+                g["duplicate_address_group"] = group_id
+                g["duplicate_with"] = [n for n in names if n != g.get("facility_name", "?")]
+                n_flagged += 1
+            group_id += 1
+
+    return n_flagged
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Step 9 — Capacity refinement (targeted search per facility)
