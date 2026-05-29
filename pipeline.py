@@ -729,6 +729,7 @@ COUNTRY_TO_ISO = {
     "spain": "ES", "italy": "IT", "netherlands": "NL",
     "belgium": "BE", "ireland": "IE", "canada": "CA",
     "brazil": "BR", "argentina": "AR", "china": "CN",
+    "colombia": "CO", "paraguay": "PY", "uruguay": "UY", "ecuador": "EC", "venezuela": "VE",
     "japan": "JP", "denmark": "DK", "poland": "PL", "sweden": "SE",
 }
 
