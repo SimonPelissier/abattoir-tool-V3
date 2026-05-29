@@ -215,6 +215,7 @@ with c2:
         "de": "Germany", "uk": "United Kingdom", "es": "Spain", "it": "Italy",
         "nl": "Netherlands", "be": "Belgium", "ie": "Ireland", "ca": "Canada",
         "br": "Brazil", "ar": "Argentina", "jp": "Japan", "dk": "Denmark",
+        "co": "Colombia", "py": "Paraguay", "uy": "Uruguay", "ec": "Ecuador", "ve": "Venezuela",
         "pl": "Poland", "se": "Sweden",
     }
     HL_OPTIONS = {
