@@ -179,6 +179,46 @@ def call_gemini_json_cached(prompt: str) -> Any:
 # ─────────────────────────────────────────────────────────────────────────────
 # Step 1 — Generate search queries
 # ─────────────────────────────────────────────────────────────────────────────
+COUNTRY_REGISTERS = {
+    # North America
+    "Mexico":         "SENASICA directorio TIF rastros",
+    "Mexique":        "SENASICA directorio TIF rastros",
+    "USA":            "USDA FSIS slaughter establishment list",
+    "United States":  "USDA FSIS slaughter establishment list",
+    "US":             "USDA FSIS slaughter establishment list",
+    "Canada":         "CFIA registered slaughter establishments",
+    # Latin America
+    "Brazil":         "MAPA SIF estabelecimentos abate frigorifico",
+    "Brasil":         "MAPA SIF estabelecimentos abate frigorifico",
+    "Argentina":      "SENASA Argentina establecimientos frigorificos habilitados",
+    "Uruguay":        "INAC Uruguay frigorificos habilitados",
+    "Paraguay":       "SENACSA Paraguay frigorificos habilitados",
+    "Colombia":       "INVIMA Colombia plantas beneficio bovinos",
+    "Colombie":       "INVIMA Colombia plantas beneficio bovinos",
+    "Chile":          "SAG Chile mataderos habilitados",
+    "Ecuador":        "Agrocalidad Ecuador mataderos registrados",
+    "Equateur":       "Agrocalidad Ecuador mataderos registrados",
+    "Venezuela":      "INSAI Venezuela mataderos registrados",
+    # Europe
+    "France":         "DGAL abattoirs agrees CE",
+    "Germany":        "BVL Bundesamt approved slaughterhouses",
+    "Allemagne":      "BVL Bundesamt approved slaughterhouses",
+    "Denmark":        "Fodevarestyrelsen approved slaughterhouses",
+    "Danemark":       "Fodevarestyrelsen approved slaughterhouses",
+    "UK":             "FSA approved slaughterhouses establishments",
+    "United Kingdom": "FSA approved slaughterhouses establishments",
+    "Ireland":        "FSAI approved slaughterhouses Ireland",
+    "Netherlands":    "NVWA approved slaughterhouses Netherlands",
+    "Spain":          "AESAN mataderos autorizados Espana",
+    "Italy":          "Ministero Salute macelli autorizzati Italia",
+    "Poland":         "GIW approved slaughterhouses Poland",
+    # Asia-Pacific
+    "Australia":      "DAFF export registered abattoir",
+    "New Zealand":    "MPI New Zealand approved meat premises",
+    "Japan":          "NLBC slaughterhouse list",
+    "Japon":          "NLBC slaughterhouse list",
+    "China":          "GACC China approved meat establishments",
+}
 
 QUERY_PROMPT = """
 You are a specialist researcher in the global beef meatpacking industry.
@@ -192,13 +232,11 @@ Query 1 and 2 - Target the OFFICIAL COMPANY WEBSITE or annual report:
   Target: company website locations page, annual report, sustainability report,
   SEC/EDGAR filing if listed.
 
-Query 3 - Target a GOVERNMENT AGRICULTURAL REGISTER:
-  - Mexico    -> SENASICA directorio TIF rastros
-  - USA       -> USDA FSIS slaughter establishment list
-  - Australia -> DAFF export registered abattoir
-  - France    -> DGAL abattoirs agrees CE
-  - Japan     -> NLBC slaughterhouse list
-  - Other     -> [country] official slaughterhouse register government
+Query 3 - Target the GOVERNMENT AGRICULTURAL REGISTER for {country}.
+  Use this exact search term as the basis for the query: "{register_hint}"
+  You may optionally append the company name to narrow the results.
+  Example: "{register_hint} {company}"
+  Do NOT translate the register name or invent alternatives — use the term as given.
 
 Query 4 - Target subsidiaries of the company:
   Example: "{company} subsidiaries slaughterhouses locations"
@@ -208,7 +246,16 @@ Return ONLY a valid JSON array of 4 strings.
 
 
 def generate_queries(company: str, country: str) -> list[str]:
-    prompt = QUERY_PROMPT.replace("{company}", company).replace("{country}", country)
+    register_hint = COUNTRY_REGISTERS.get(country)
+    if not register_hint:
+        register_hint = f"{country} national slaughterhouse register government agency"
+
+    prompt = (
+        QUERY_PROMPT
+        .replace("{company}", company)
+        .replace("{country}", country)
+        .replace("{register_hint}", register_hint)
+    )
     result = call_gemini_json_cached(prompt)
     if not isinstance(result, list):
         return []
