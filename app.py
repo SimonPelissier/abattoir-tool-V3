@@ -489,6 +489,8 @@ else:
                 {
                     "Facility": a.get("facility_name", "?"),
                     "City": a.get("city", ""),
+                    "Type": a.get("facility_type", ""),
+                    "Species": ", ".join(a.get("species", [])),
                     "Country": a.get("country", ""),
                     "Est.#": a.get("establishment_number", ""),
                     "Capacity": (
