@@ -623,17 +623,59 @@ You are a specialist in global beef slaughter industry data extraction.
 
 Company: {company} | Source format: {fmt}
 
-TASK: Extract slaughterhouses DIRECTLY OPERATED or OWNED by {company}
-or one of its subsidiaries.
+TASK: Extract ALL MEAT-RELATED FACILITIES DIRECTLY OPERATED or OWNED by {company}
+or one of its subsidiaries — including slaughterhouses AND adjacent facilities
+such as processing plants, packing plants, deboning units, and feedlots.
 
-SEARCH FOR:
-- TIF numbers (Mexico), FSIS Est. numbers (USA), DAFF Est. (Australia)
-- Tables listing facilities with addresses or cities
-- Mentions of "slaughter", "rastro", "sacrificio", "abattoir", "harvest facility"
+For EACH facility, classify its TYPE in the dedicated facility_type field.
+
+================  FACILITY TYPE TAXONOMY  ================
+Use the following controlled vocabulary for facility_type:
+
+  slaughterhouse        — live animals are killed on site
+                          (synonyms: abattoir, matadero, rastro, frigorifico abate)
+  packing_plant         — primary cutting/boning right after slaughter,
+                          often co-located with a slaughterhouse
+                          (synonyms: meatpacking, planta de empacado)
+  processing_plant      — secondary transformation only (no live animals):
+                          cooked meats, deli, sausage, ready meals
+                          (synonyms: value-added, transformation, charcuterie)
+  deboning_unit         — standalone cutting/deboning facility
+                          (synonyms: cutting plant, atelier de decoupe, desossa)
+  feedlot               — cattle/livestock fattening before slaughter
+                          (synonyms: confinamento, corral de engorde)
+  cold_storage          — freezing/storage hub only
+  distribution_center   — logistics hub only
+  rendering_plant       — by-product processing (tallow, bonemeal)
+  other                 — does not fit any above category
+==========================================================
+
+For EACH facility, also report what species are processed.
+
+================  SPECIES TAXONOMY  ================
+Use the following controlled vocabulary for the species list:
+
+  beef          — bovine for meat (adult cattle)
+  veal          — bovine for veal (young cattle)
+  buffalo       — water buffalo, bison
+  pig           — porcine
+  sheep         — ovine (mutton)
+  lamb          — ovine (young sheep)
+  goat          — caprine
+  chicken       — broiler chickens (poultry)
+  turkey        — turkey
+  duck          — duck (and other waterfowl)
+  horse         — equine
+  other_poultry — any other poultry species not listed above
+  other         — any other species not listed above
+
+A facility may process multiple species — return them as a list.
+Do NOT use generic terms like "cattle" or "poultry" alone — be specific.
+====================================================
 
 EXCLUDE STRICTLY:
-- Pure processing/transformation factories (no live animal slaughter)
-- Offices, laboratories, cold storage, distribution centers, retail butcheries
+- Offices, laboratories, retail butcheries, restaurants
+- Pure feed mills (animal feed manufacturing, no animal processing)
 
 ================  CAPACITY vs THROUGHPUT  ================
 CAPACITY = the MAXIMUM theoretical processing potential of the facility.
@@ -652,14 +694,15 @@ classification_uncertain = true. Never default an ambiguous figure to capacity.
 
 Return ONLY valid JSON:
 {{
-  "slaughterhouses": [
+  "facilities": [
     {{
       "facility_name": "string or null",
+      "facility_type": "slaughterhouse|packing_plant|processing_plant|deboning_unit|feedlot|cold_storage|distribution_center|rendering_plant|other",
       "operator": "string or null",
       "address": "string or null",
       "city": "string or null",
       "country": "string or null",
-      "species": ["cattle"],
+      "species": ["beef", "pig", ...],
       "capacity": {{ "value": 0, "unit": "head/day", "year_reported": null }},
       "throughput": [
         {{ "value": 0, "unit": "head/year", "year": 2023 }}
@@ -674,7 +717,7 @@ Return ONLY valid JSON:
   ],
   "excluded": [
     {{ "facility_name": "string",
-       "reason": "processing only / office / cold storage / laboratory / retail / other" }}
+       "reason": "office / laboratory / retail / feed mill / other" }}
   ],
   "source_quality": "high|medium|low"
 }}
@@ -700,7 +743,7 @@ def extract_abattoirs_from_source(item: dict, company: str,
     all_sh, all_excl, seen_local = [], [], set()
     for i, chunk in enumerate(chunks, 1):
         result = _extract_abattoirs_from_chunk(chunk, company, item["format"])
-        for s in result.get("slaughterhouses", []):
+        for s in result.get("facilities", result.get("slaughterhouses", [])):
             key = (s.get("establishment_number") or s.get("facility_name") or "").lower().strip()
             if key and key not in seen_local:
                 seen_local.add(key)
@@ -709,7 +752,7 @@ def extract_abattoirs_from_source(item: dict, company: str,
         if i < len(chunks):
             time.sleep(sleep_between_chunks)
     return {
-        "slaughterhouses": all_sh,
+        "facilities": all_sh,
         "excluded": all_excl,
         "source_quality": "high" if all_sh else "low",
     }
@@ -720,22 +763,26 @@ def extract_abattoirs_from_source(item: dict, company: str,
 # ─────────────────────────────────────────────────────────────────────────────
 
 SYNTHESIS_PROMPT = """
-You are a data analyst specialising in the global beef slaughter industry.
+You are a data analyst specialising in the global meat processing industry.
 
-You have slaughterhouse data extracted from MULTIPLE sources about {company}.
-Produce a FINAL DEDUPLICATED and ENRICHED list.
+You have facility data extracted from MULTIPLE sources about {company}.
+Produce a FINAL DEDUPLICATED and ENRICHED list of ALL facility types
+(slaughterhouses, processing plants, packing plants, etc.).
 
 RULES:
 1. MERGE duplicates - same facility across sources
    (match priority: establishment_number > city+country > facility_name similarity)
 2. ENRICH - combine complementary fields. CAPACITY and THROUGHPUT are SEPARATE.
 3. THROUGHPUT is a list - merge entries from all sources, one per year.
-4. INCREASE confidence_score if a facility appears in 2+ sources.
-5. FLAG conflicts.
-6. Keep ONLY slaughterhouses - discard processing-only facilities.
+4. PRESERVE facility_type and species for every facility — do not discard.
+5. If two sources disagree on facility_type, keep the more specific one
+   (slaughterhouse > packing_plant > processing_plant) and flag the conflict.
+6. INCREASE confidence_score if a facility appears in 2+ sources.
+7. FLAG conflicts.
+8. Discard only offices, laboratories, retail butcheries, and pure feed mills.
 
 Return ONLY valid JSON:
-{{ "final_slaughterhouses": [...], "synthesis_notes": "brief summary" }}
+{{ "final_facilities": [...], "synthesis_notes": "brief summary" }}
 """
 
 
@@ -761,7 +808,7 @@ def synthesize(all_abattoirs: list[dict], all_sources: list[dict], company: str)
     result = call_gemini_json_cached(prompt)
     if not isinstance(result, dict):
         return all_abattoirs
-    return result.get("final_slaughterhouses", [])
+    return result.get("final_facilities", result.get("final_slaughterhouses", all_abattoirs))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1074,6 +1121,7 @@ def build_export_dataframe(final_abattoirs: list[dict], company: str):
         base = {
             "Company": a.get("operator") or company,
             "Facility_name": a.get("facility_name", ""),
+            "Facility_type": a.get("facility_type", ""),
             "Est.#": a.get("establishment_number", ""),
             "Address": a.get("google_address"),
             "City": a.get("city", ""),
