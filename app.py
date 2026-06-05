@@ -441,7 +441,7 @@ else:
                 result = pipeline.extract_abattoirs_from_source(item, company)
                 item["exclusions"] = result.get("excluded", [])
 
-                for a in result.get("facilities", result.get("slaughterhouses", [])):
+                for a in result.get("slaughterhouses", []):
                     key = (a.get("establishment_number") or a.get("facility_name") or "").lower().strip()
                     if key in seen_global:
                         existing = all_abattoirs[seen_global[key]]
@@ -489,8 +489,6 @@ else:
                 {
                     "Facility": a.get("facility_name", "?"),
                     "City": a.get("city", ""),
-                    "Type": a.get("facility_type", ""),
-                    "Species": ", ".join(a.get("species", [])),
                     "Country": a.get("country", ""),
                     "Est.#": a.get("establishment_number", ""),
                     "Capacity": (
