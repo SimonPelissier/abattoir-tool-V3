@@ -53,6 +53,7 @@ def _init_state() -> None:
         "final_abattoirs": [],
         "exclusions": [],
         "refinement_logs": [],
+        "verification_logs": [],
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -676,9 +677,118 @@ else:
         ])
         st.map(df_map, latitude="lat", longitude="lon", size=80)
 
-
 # ─────────────────────────────────────────────────────────────────────────────
-# Step 8 — Export
+# Step 8 — Verify facility type and species (optional, targeted)
+# ─────────────────────────────────────────────────────────────────────────────
+
+st.header("8. Verify facility type & species (optional)")
+
+if not st.session_state.final_abattoirs:
+    st.caption("Run step 5 first.")
+else:
+    source_data = st.session_state.final_abattoirs
+
+    st.caption(
+        "Targeted SerpAPI + Gemini verification of each selected facility. "
+        "Useful for facilities whose type is ambiguous (slaughterhouse vs "
+        "processing-only) or whose exact species mix is unclear."
+    )
+
+    options_for_verify = {}
+    for i, a in enumerate(source_data):
+        already = a.get("verified_type")
+        marker = f" ✓ {already}" if already else ""
+        options_for_verify[i] = (
+            f"[{i}] {a.get('facility_name','?')} — {a.get('city','?')}{marker}"
+        )
+
+    verify_filter = st.radio(
+        "Which facilities?",
+        ["All", "Not yet verified", "Custom selection"],
+        horizontal=True, key="verify_filter",
+    )
+
+    if verify_filter == "All":
+        targets = list(range(len(source_data)))
+    elif verify_filter == "Not yet verified":
+        targets = [i for i, a in enumerate(source_data) if not a.get("verified_type")]
+    else:
+        targets = st.multiselect(
+            "Pick facilities", list(options_for_verify.keys()),
+            format_func=lambda i: options_for_verify[i],
+            key="verify_multiselect",
+        )
+
+    if targets:
+        st.caption(f"{len(targets)} facility(ies) selected.")
+
+    if st.button("🔎 Verify type & species", disabled=not targets):
+        logs = []
+        progress = st.progress(0.0, text="Starting verification...")
+        for n, idx in enumerate(targets, 1):
+            a = source_data[idx]
+            progress.progress(
+                (n - 1) / len(targets),
+                text=f"[{n}/{len(targets)}] {a.get('facility_name','?')}",
+            )
+            log = pipeline.verify_facility_type(
+                a,
+                gl=st.session_state.gl,
+                hl=st.session_state.hl,
+                location=st.session_state.location or st.session_state.country,
+                default_company=st.session_state.company,
+            )
+            log["index"] = idx
+            log["facility_name"] = a.get("facility_name", "?")
+            logs.append(log)
+        progress.progress(1.0, text="Done.")
+        st.session_state.verification_logs = logs
+        st.rerun()
+
+    # Display results if any verification has been done
+    verified = [a for a in source_data if a.get("verified_type")]
+    if verified:
+        st.markdown(f"**{len(verified)} facility(ies) verified**")
+        verify_df = pd.DataFrame([
+            {
+                "Facility": a.get("facility_name", "?"),
+                "City": a.get("city", ""),
+                "Original (extracted)": "slaughterhouse",  # implicit prior assumption
+                "Verified type": a.get("verified_type", ""),
+                "Verified species": ", ".join(a.get("verified_species", [])),
+                "Confidence": f"{a.get('verification_confidence', 0):.0%}",
+            }
+            for a in verified
+        ])
+        st.dataframe(verify_df, use_container_width=True, hide_index=True)
+
+        # Show details with evidence
+        st.markdown("**Verification details (with evidence)**")
+        for a in verified:
+            with st.expander(
+                f"{a.get('facility_name', '?')} — "
+                f"{a.get('verified_type', '?')} "
+                f"({a.get('verification_confidence', 0):.0%})",
+                expanded=False,
+            ):
+                st.markdown(f"**Type:** {a.get('verified_type', '—')}")
+                st.markdown(f"**Species:** {', '.join(a.get('verified_species', [])) or '—'}")
+                st.markdown(f"**Reasoning:** {a.get('verification_reasoning', '—')}")
+                if a.get("verification_evidence"):
+                    st.markdown(
+                        f"**Evidence quote:**  \n> {a['verification_evidence']}"
+                    )
+
+        # Quick statistics
+        type_counts = {}
+        for a in verified:
+            t = a.get("verified_type", "?")
+            type_counts[t] = type_counts.get(t, 0) + 1
+        st.markdown("**Type distribution among verified facilities**")
+        st.bar_chart(pd.Series(type_counts))
+        
+# ─────────────────────────────────────────────────────────────────────────────
+# Step 9 — Export
 # ─────────────────────────────────────────────────────────────────────────────
 
 st.header("8. Export")
