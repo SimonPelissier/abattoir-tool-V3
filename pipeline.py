@@ -623,11 +623,17 @@ You are a specialist in global beef slaughter industry data extraction.
 
 Company: {company} | Source format: {fmt}
 
-TASK: Extract ALL MEAT-RELATED FACILITIES DIRECTLY OPERATED or OWNED by {company}
-or one of its subsidiaries — including slaughterhouses AND adjacent facilities
-such as processing plants, packing plants, deboning units, and feedlots.
+TASK: Extract slaughterhouses DIRECTLY OPERATED or OWNED by {company}
+or one of its subsidiaries.
 
-For EACH facility, classify its TYPE in the dedicated facility_type field.
+SEARCH FOR:
+- TIF numbers (Mexico), FSIS Est. numbers (USA), DAFF Est. (Australia)
+- Tables listing facilities with addresses or cities
+- Mentions of "slaughter", "rastro", "sacrificio", "abattoir", "harvest facility"
+
+EXCLUDE STRICTLY:
+- Pure processing/transformation factories (no live animal slaughter)
+- Offices, laboratories, cold storage, distribution centers, retail butcheries
 
 ================  FACILITY TYPE TAXONOMY  ================
 Use the following controlled vocabulary for facility_type:
