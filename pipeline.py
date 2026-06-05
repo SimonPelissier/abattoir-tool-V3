@@ -1058,9 +1058,170 @@ def refine_capacity(facility: dict, gl: str, hl: str, location: str,
         log["outcome"] = "alternatives_recorded"
     return log
 
-
 # ─────────────────────────────────────────────────────────────────────────────
-# Step 10 — Export to dataframe
+# Step 10 — Facility type and species verification (post-geocoding)
+# ─────────────────────────────────────────────────────────────────────────────
+
+VERIFICATION_PROMPT = """
+You are verifying the TYPE and SPECIES of a single industrial meat facility,
+based on web sources you are given below.
+
+Target facility:
+  - Name:     {facility_name}
+  - Operator: {operator}
+  - Location: {city}, {country}
+
+================  FACILITY TYPE TAXONOMY  ================
+Choose ONE value for facility_type:
+
+  slaughterhouse        — live animals are killed on site
+                          (synonyms: abattoir, matadero, rastro,
+                          frigorifico abate, harvest facility)
+  packing_plant         — primary cutting/boning right after slaughter,
+                          usually co-located with a slaughterhouse
+  processing_plant      — secondary transformation only, no live animals
+                          (cooked meats, deli, sausage, ready meals,
+                          value-added products)
+  deboning_unit         — standalone cutting/deboning facility
+  feedlot               — cattle/livestock fattening before slaughter
+  cold_storage          — freezing/storage hub only
+  distribution_center   — logistics hub only
+  rendering_plant       — by-product processing (tallow, bonemeal)
+  office_or_other       — corporate office, lab, retail, or anything else
+  uncertain             — sources are insufficient or contradictory
+==========================================================
+
+================  SPECIES TAXONOMY  ================
+For species_verified, return a LIST of one or more values from:
+
+  beef          — adult cattle for meat
+  veal          — young cattle
+  buffalo       — water buffalo, bison
+  pig           — porcine
+  sheep         — adult ovine (mutton)
+  lamb          — young ovine
+  goat          — caprine
+  chicken       — broiler chickens
+  turkey        — turkey
+  duck          — duck and other waterfowl
+  horse         — equine
+  other_poultry — any other poultry not above
+  other         — any other species not above
+
+Be specific: do NOT use generic terms like "cattle" or "poultry" — pick the
+precise category. A facility may process multiple species.
+====================================================
+
+Return ONLY valid JSON:
+{{
+  "facility_type": "one value from the type taxonomy above",
+  "species_verified": ["one or more values from species taxonomy"],
+  "evidence_quote": "short quote from the source (max 40 words) supporting your classification",
+  "confidence": 0.0-1.0,
+  "reasoning": "brief one-sentence explanation"
+}}
+
+If the sources do not give enough information, return facility_type = "uncertain"
+with confidence below 0.4.
+"""
+
+
+def verify_facility_type(facility: dict, gl: str, hl: str, location: str,
+                         default_company: str = "") -> dict:
+    """
+    Verify the facility_type and species of a single facility through a
+    targeted web search + LLM classification.
+
+    Updates the facility in place with:
+      verified_type, verified_species, verification_confidence,
+      verification_evidence, verification_reasoning
+
+    Returns a log dict for the UI.
+    """
+    name = facility.get("facility_name") or ""
+    city = facility.get("city") or ""
+    country = facility.get("country") or ""
+    operator = facility.get("operator") or default_company
+
+    log = {"queries": [], "candidate_urls": [], "outcome": "no_change"}
+
+    # Build 2-3 disambiguating queries
+    queries = []
+    if name and city:
+        queries.append(f"{name} {city} slaughterhouse OR abattoir OR processing")
+    if operator and city:
+        queries.append(f"{operator} {city} site type meat plant")
+    if name and country:
+        queries.append(f"{name} {country} what does this plant do")
+    if not queries:
+        log["outcome"] = "insufficient_info"
+        return log
+    log["queries"] = queries
+
+    # SerpAPI search — collect candidate URLs
+    candidate_urls, seen = [], set()
+    for q in queries:
+        try:
+            resp = requests.get("https://serpapi.com/search", params={
+                "q": q, "api_key": SERPAPI_API_KEY, "num": 3,
+                "gl": gl, "hl": hl, "location": location, "filter": "0",
+            }, timeout=30)
+            resp.raise_for_status()
+            results = resp.json().get("organic_results", [])[:3]
+        except requests.RequestException:
+            continue
+        for r in results:
+            url = r.get("link", "")
+            if url and url not in seen and not any(d in url for d in EXCLUDED_DOMAINS):
+                seen.add(url)
+                candidate_urls.append({"url": url, "title": r.get("title", "")})
+        time.sleep(1)
+    log["candidate_urls"] = candidate_urls
+
+    if not candidate_urls:
+        log["outcome"] = "no_candidates"
+        return log
+
+    # Extract content from the top 3 candidate sources
+    aggregated_text = ""
+    for c in candidate_urls[:3]:
+        chunks, fmt, n_chars = extract_content_cached(c["url"])
+        if chunks:
+            # Take the first ~3000 chars from each source — type/species clues
+            # are usually in headings, opening paragraphs, or product listings
+            aggregated_text += f"\n\n--- Source: {c['url']} ---\n"
+            aggregated_text += "\n".join(chunks)[:3000]
+        if len(aggregated_text) > 9000:
+            break
+
+    if not aggregated_text.strip():
+        log["outcome"] = "no_extractable_content"
+        return log
+
+    # Single Gemini call with the verification prompt
+    prompt = VERIFICATION_PROMPT.format(
+        facility_name=name, operator=operator, city=city, country=country,
+    ) + f"\n\nSOURCE TEXTS:\n{aggregated_text[:12000]}"
+
+    result = call_gemini_json_cached(prompt)
+
+    if not isinstance(result, dict):
+        log["outcome"] = "llm_parse_error"
+        return log
+
+    # Update the facility in place
+    facility["verified_type"] = result.get("facility_type", "uncertain")
+    facility["verified_species"] = result.get("species_verified", [])
+    facility["verification_confidence"] = result.get("confidence", 0.0)
+    facility["verification_evidence"] = result.get("evidence_quote", "")
+    facility["verification_reasoning"] = result.get("reasoning", "")
+
+    log["outcome"] = "verified"
+    log["result"] = result
+    return log
+                             
+# ─────────────────────────────────────────────────────────────────────────────
+# Step 11 — Export to dataframe
 # ─────────────────────────────────────────────────────────────────────────────
 
 def build_export_dataframe(final_abattoirs: list[dict], company: str):
@@ -1093,6 +1254,10 @@ def build_export_dataframe(final_abattoirs: list[dict], company: str):
             "Export_certified": a.get("export_certified", ""),
             "Classification_uncertain": a.get("classification_uncertain", ""),
             "Confidence": a.get("confidence_score", ""),
+            "Verified_type": a.get("verified_type", ""),
+            "Verified_species": ", ".join(a.get("verified_species", [])),
+            "Verification_confidence": a.get("verification_confidence", ""),
+            "Verification_evidence": a.get("verification_evidence", ""),
             "Duplicate_address_flag": a.get("duplicate_address_flag", False),
             "Duplicate_with": " | ".join(a.get("duplicate_with", [])),
             "N_sources": a.get("n_sources", len(a.get("source_urls", []))),
