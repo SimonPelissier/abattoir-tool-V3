@@ -791,7 +791,7 @@ else:
 # Step 9 — Export
 # ─────────────────────────────────────────────────────────────────────────────
 
-st.header("8. Export")
+st.header("9. Export")
 
 if not st.session_state.final_abattoirs:
     st.caption("Run step 5 first.")
