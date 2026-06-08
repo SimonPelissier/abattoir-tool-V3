@@ -796,26 +796,64 @@ st.header("9. Export")
 if not st.session_state.final_abattoirs:
     st.caption("Run step 5 first.")
 else:
+    # Build summary
+    summary = pipeline.build_summary(
+        st.session_state.final_abattoirs, st.session_state.company,
+    )
+
+    # Display summary as a visual recap
+    st.markdown("### Summary")
+    sc1, sc2, sc3, sc4 = st.columns(4)
+    sc1.metric("Unique facilities", summary["n_unique"])
+    sc2.metric("Geocoded", summary["n_geocoded"])
+    sc3.metric("With capacity", summary["n_with_capacity"])
+    sc4.metric("Countries", summary["n_countries"])
+
+    # Second row of metrics (your previous ones)
+    sc5, sc6, sc7, sc8 = st.columns(4)
+    sc5.metric("CSV rows", len(pipeline.build_export_dataframe(
+        st.session_state.final_abattoirs, st.session_state.company)))
+    sc6.metric("Excluded", len(st.session_state.exclusions))
+    sc7.metric("Sources processed", len(st.session_state.extracted_sources))
+    sc8.metric("Duplicates flagged", summary["n_flagged_duplicate"])
+
+    if summary["countries"]:
+        st.caption("**Countries covered:** " + ", ".join(summary["countries"]))
+    if summary["n_flagged_duplicate"]:
+        st.caption(
+            f"⚠️ {summary['n_flagged_duplicate']} facility(ies) flagged as duplicate "
+            "addresses — review before finalising."
+        )
+
+    # Data table
+    st.markdown("### Data")
     df = pipeline.build_export_dataframe(
         st.session_state.final_abattoirs, st.session_state.company,
     )
     st.dataframe(df, use_container_width=True, hide_index=True)
 
-    n_facilities = len(st.session_state.final_abattoirs)
-    n_rows = len(df)
-    cA, cB, cC, cD = st.columns(4)
-    cA.metric("Unique facilities", n_facilities)
-    cB.metric("CSV rows", n_rows)
-    cC.metric("Excluded", len(st.session_state.exclusions))
-    cD.metric("Sources processed", len(st.session_state.extracted_sources))
-
+    # Download buttons
     csv_bytes = df.to_csv(index=False).encode("utf-8")
     filename = f"slaughterhouses_{st.session_state.company}_{datetime.now():%Y%m%d}.csv"
-    st.download_button(
-        "💾 Download CSV", data=csv_bytes, file_name=filename, mime="text/csv",
-        type="primary",
-    )
 
+    dc1, dc2 = st.columns(2)
+    with dc1:
+        st.download_button(
+            "💾 Download CSV", data=csv_bytes, file_name=filename, mime="text/csv",
+            type="primary", use_container_width=True,
+        )
+    with dc2:
+        summary_text = pipeline.format_summary_text(summary)
+        summary_filename = f"slaughterhouses_{st.session_state.company}_{datetime.now():%Y%m%d}_summary.txt"
+        st.download_button(
+            "📄 Download summary (.txt)",
+            data=summary_text.encode("utf-8"),
+            file_name=summary_filename,
+            mime="text/plain",
+            use_container_width=True,
+        )
+
+    # Excluded facilities expander (unchanged from your version)
     if st.session_state.exclusions:
         with st.expander(f"Excluded facilities ({len(st.session_state.exclusions)})"):
             st.dataframe(
