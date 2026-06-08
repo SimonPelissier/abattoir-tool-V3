@@ -1269,3 +1269,82 @@ def build_export_dataframe(final_abattoirs: list[dict], company: str):
                          "Throughput_unit": t.get("unit", ""),
                          "Throughput_year": t.get("year", "")})
     return pd.DataFrame(rows)
+def build_summary(final_abattoirs: list[dict], company: str) -> dict:
+    """
+    Build a summary dict of the extraction results.
+    Returns a structured summary that the app can display or export.
+    """
+    if not final_abattoirs:
+        return {
+            "company": company,
+            "n_total": 0, "n_unique": 0,
+            "countries": [], "n_countries": 0,
+            "n_geocoded": 0, "n_with_capacity": 0,
+            "n_flagged_duplicate": 0,
+            "coords_sources": {},
+        }
+
+    # Unique by establishment_number first, then by (city, country)
+    seen_keys = set()
+    unique_facilities = []
+    for a in final_abattoirs:
+        key = (
+            (a.get("establishment_number") or "").strip().lower()
+            or f"{a.get('facility_name','')}|{a.get('city','')}|{a.get('country','')}".lower()
+        )
+        if key and key not in seen_keys:
+            seen_keys.add(key)
+            unique_facilities.append(a)
+
+    countries = sorted({
+        (a.get("country") or "").strip()
+        for a in unique_facilities
+        if a.get("country")
+    })
+
+    coords_sources: dict = {}
+    for a in unique_facilities:
+        s = a.get("coords_source") or "not_geocoded"
+        coords_sources[s] = coords_sources.get(s, 0) + 1
+
+    return {
+        "company": company,
+        "n_total": len(final_abattoirs),
+        "n_unique": len(unique_facilities),
+        "countries": countries,
+        "n_countries": len(countries),
+        "n_geocoded": sum(1 for a in unique_facilities if a.get("latitude")),
+        "n_with_capacity": sum(
+            1 for a in unique_facilities if (a.get("capacity") or {}).get("value")
+        ),
+        "n_flagged_duplicate": sum(
+            1 for a in unique_facilities if a.get("duplicate_address_flag")
+        ),
+        "coords_sources": coords_sources,
+    }
+
+
+def format_summary_text(summary: dict) -> str:
+    """Format the summary dict as a human-readable text block."""
+    lines = [
+        "=" * 60,
+        f"SLAUGHTERHOUSE EXTRACTION SUMMARY",
+        f"Company: {summary['company']}",
+        f"Generated: {datetime.now():%Y-%m-%d %H:%M}",
+        "=" * 60,
+        "",
+        f"Total records (incl. multi-year throughput):  {summary['n_total']}",
+        f"Unique facilities:                            {summary['n_unique']}",
+        f"Geocoded:                                     {summary['n_geocoded']}",
+        f"With reported capacity:                       {summary['n_with_capacity']}",
+        f"Flagged as duplicate address:                 {summary['n_flagged_duplicate']}",
+        "",
+        f"Countries covered ({summary['n_countries']}):",
+        "  " + ", ".join(summary["countries"]) if summary["countries"] else "  (none)",
+        "",
+        "Geocoding sources:",
+    ]
+    for src, n in sorted(summary["coords_sources"].items()):
+        lines.append(f"  {src:20s} {n}")
+    lines.append("=" * 60)
+    return "\n".join(lines)
