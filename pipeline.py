@@ -1297,9 +1297,19 @@ def build_summary(final_abattoirs: list[dict], company: str) -> dict:
             seen_keys.add(key)
             unique_facilities.append(a)
 
+    physical_sites = []
+    seen_duplicate_groups = set()
+    for a in unique_facilities:
+        dup_group = a.get("duplicate_address_group")
+        if dup_group is not None:
+            if dup_group in seen_duplicate_groups:
+                continue
+            seen_duplicate_groups.add(dup_group)
+        physical_sites.append(a)
+
     countries = sorted({
         (a.get("country") or "").strip()
-        for a in unique_facilities
+        for a in physical_sites
         if a.get("country")
     })
 
@@ -1311,12 +1321,12 @@ def build_summary(final_abattoirs: list[dict], company: str) -> dict:
     return {
         "company": company,
         "n_total": len(final_abattoirs),
-        "n_unique": len(unique_facilities),
+        "n_unique": len(physical_sites),
         "countries": countries,
         "n_countries": len(countries),
-        "n_geocoded": sum(1 for a in unique_facilities if a.get("latitude")),
+        "n_geocoded": sum(1 for a in physical_sites if a.get("latitude")),
         "n_with_capacity": sum(
-            1 for a in unique_facilities if (a.get("capacity") or {}).get("value")
+            1 for a in physical_sites if (a.get("capacity") or {}).get("value")
         ),
         "n_flagged_duplicate": sum(
             1 for a in unique_facilities if a.get("duplicate_address_flag")
