@@ -126,8 +126,3 @@ The pipeline is split into 8 steps, each presented as a section in the UI:
 7. **Geocoding** — Google Places API as primary, Nominatim as fallback. Displays a map.
 8. **Export** — final CSV ready for analysis.
 
----
-
-## Tested companies
-
-During development: SuKarne (Mexico), Bigard (France), Kilcoy Global Foods (Australia), Danish Crown (Denmark). Achieved 87% precision and 90% recall on a large-scale Bigard test (27 correct out of 30 identified, missing 3 small subsidiaries).
